@@ -138,21 +138,30 @@ async def test_ai_settings(
     try:
         from openai import OpenAI
         import httpx
+        
+        # 优先使用前端传入的配置，如果缺少则回退到环境变量
+        api_key = (settings.get("OPENAI_API_KEY") or env_manager.get_value("OPENAI_API_KEY", "")).strip('"')
+        base_url = (settings.get("OPENAI_BASE_URL") or env_manager.get_value("OPENAI_BASE_URL", "")).strip('"')
+        model_name = (settings.get("OPENAI_MODEL_NAME") or env_manager.get_value("OPENAI_MODEL_NAME", "")).strip('"')
+        # 注意：前端可能不传 PROXY_URL，此时应检查环境变量
+        proxy_url = (settings.get("PROXY_URL") or env_manager.get_value("PROXY_URL", "")).strip('"')
+
+        print(f"AI测试 - BASE_URL: {base_url}, MODEL: {model_name}, PROXY: {proxy_url}")
 
         # 创建OpenAI客户端
         client_params = {
-            "api_key": settings.get("OPENAI_API_KEY", ""),
-            "base_url": settings.get("OPENAI_BASE_URL", ""),
+            "api_key": api_key,
+            "base_url": base_url,
             "timeout": httpx.Timeout(30.0),
         }
 
         # 如果有代理设置
-        proxy_url = settings.get("PROXY_URL", "")
         if proxy_url:
-            client_params["http_client"] = httpx.Client(proxy=proxy_url)
-
-        model_name = settings.get("OPENAI_MODEL_NAME", "")
-        print(f"AI测试 - BASE_URL: {client_params['base_url']}, MODEL: {model_name}")
+            # 必须设置 verify=False 以支持本地自签名证书代理
+            client_params["http_client"] = httpx.Client(
+                proxy=proxy_url,
+                verify=False
+            )
 
         client = OpenAI(**client_params)
 
@@ -160,7 +169,7 @@ async def test_ai_settings(
         response = client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "user", "content": "Hello, this is a test message."}
+                {"role": "user", "content": "Hello"}
             ],
             max_tokens=10
         )
@@ -171,6 +180,9 @@ async def test_ai_settings(
             "response": response.choices[0].message.content if response.choices else "No response"
         }
     except Exception as e:
+        print(f"AI测试失败详情: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "success": False,
             "message": f"AI模型连接测试失败: {str(e)}"

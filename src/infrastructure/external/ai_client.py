@@ -5,6 +5,7 @@ AI 客户端封装
 import os
 import json
 import base64
+import httpx
 from typing import Dict, List, Optional
 from datetime import datetime
 from openai import AsyncOpenAI
@@ -25,18 +26,29 @@ class AIClient:
             return None
 
         try:
+            http_client = None
             if self.settings.proxy_url:
                 print(f"正在为 AI 请求使用代理: {self.settings.proxy_url}")
-                os.environ['HTTP_PROXY'] = self.settings.proxy_url
-                os.environ['HTTPS_PROXY'] = self.settings.proxy_url
+                # 显式配置 httpx 客户端使用代理
+                http_client = httpx.AsyncClient(
+                    proxies=self.settings.proxy_url,
+                    verify=False,  # 避免代理自签名证书导致的 SSL 错误
+                    timeout=30.0   # 增加超时时间
+                )
+
+            # 清理可能存在的引号
+            clean_base_url = self.settings.base_url.strip('"')
+            clean_api_key = self.settings.api_key.strip('"')
 
             return AsyncOpenAI(
-                api_key=self.settings.api_key,
-                base_url=self.settings.base_url
+                api_key=clean_api_key,
+                base_url=clean_base_url,
+                http_client=http_client
             )
         except Exception as e:
             print(f"初始化 AI 客户端失败: {e}")
             return None
+
 
     def is_available(self) -> bool:
         """检查 AI 客户端是否可用"""
